@@ -228,6 +228,12 @@ input,textarea{font-family:var(--ko)}
     .play .p-side{min-height:calc(100dvh - 48px)}
   }
 }
+.live{font-size:18px;text-align:center;padding:8px 12px;border:2px solid var(--line2);color:var(--muted);line-height:1.5}
+.live b{font-family:var(--pix);font-size:15px;color:var(--green);font-weight:normal}
+.live.warn{border-color:var(--yellow);color:var(--yellow)}
+.live.warn b{color:var(--yellow)}
+.live.full{border-color:var(--pink);color:var(--pink)}
+.live.full b{color:var(--pink)}
 .toast{position:fixed;left:50%;top:18px;transform:translateX(-50%);background:var(--yellow);color:var(--bg);padding:10px 16px;font-size:20px;z-index:50;box-shadow:4px 4px 0 var(--yellow-d)}
 /* animations */
 @keyframes enter{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
@@ -422,7 +428,13 @@ async function makeFirebaseBackend(cfg){
     update: (p, o) => d.ref(p).update(o),
     push(p, v){ const r = d.ref(p).push(); r.set(v); return r.key; },
     remove: p => d.ref(p).remove(),
-    presence(p){ const r = d.ref(p); d.ref('.info/connected').on('value', s => { if (s.val()) { r.onDisconnect().set(false); r.set(true); } }); }
+    presence(p){ const r = d.ref(p); d.ref('.info/connected').on('value', s => { if (s.val()) { r.onDisconnect().set(false); r.set(true); } }); },
+    /* 지금 접속 중인 사람 수 (무료 요금제 동시 접속 100명 확인용) */
+    trackPresence(onCount){
+      const me = d.ref('presence/' + genId());
+      d.ref('.info/connected').on('value', s => { if (s.val()) { me.onDisconnect().remove(); me.set(firebase.database.ServerValue.TIMESTAMP).catch(() => {}); } });
+      d.ref('presence').on('value', s => onCount(s.numChildren()), () => onCount(null));
+    }
   };
 }
 
@@ -965,6 +977,7 @@ function render(force){
   if (!S.code) return;
   if (S.role === 'host') renderHost(force); else renderPlayer(force);
   updateDynamic();
+  updateLive();
 }
 
 function onTick(){
@@ -1019,6 +1032,7 @@ function hostLobbyHTML(){
       <div class="qr" id="qr"><span class="muted" style="color:#333">QR 준비 중</span></div>
       <div class="bigcode">${esc(S.code)}</div>
       <div class="url">${esc(joinURL())}</div>
+      <div class="live" data-live hidden style="width:100%"></div>
       <button class="btn pink" data-act="start" style="height:60px;font-size:24px;width:100%" ${online < 2 ? 'disabled' : ''}>게임 시작 ▶</button>
       ${online < 2 ? '<div class="muted" style="font-size:16px">학생이 2명 이상 들어오면 시작할 수 있어요</div>' : ''}
     </div>
@@ -1476,6 +1490,7 @@ function homeHTML(){
       <button class="btn yellow" data-home="practice"><span>혼자 연습 · 컴퓨터 친구와</span><span class="pix">1P</span></button>
       ${recent ? `<button class="btn ghost" data-home="resume"><span>만든 방 이어서 열기 (${esc(saved.code)})</span><span class="pix">CONT</span></button>` : ''}
     </div>
+    <div class="live" data-live hidden></div>
     <div class="note">선생님은 전자칠판에서 방을 만들고, 학생은 휴대폰이나 노트북으로 들어와요. 뽑힌 친구 1~3명이 픽셀로 이어 그리고, 나머지는 정답을 맞혀요.</div>
   </div></div>`;
 }
@@ -1502,7 +1517,19 @@ function practiceHTML(){
     <button class="btn ghost small" type="button" data-home="back">처음으로</button>
   </form></div>`;
 }
-function showHome(){ S.code = null; app.innerHTML = homeHTML(); history.replaceState(null, '', location.pathname); }
+const LIVE_MAX = 100;
+function updateLive(){
+  document.querySelectorAll('[data-live]').forEach(el => {
+    const n = S.liveCount;
+    if (n == null) { el.hidden = true; return; }
+    el.hidden = false;
+    const lv = n >= LIVE_MAX - 5 ? 'full' : n >= LIVE_MAX - 15 ? 'warn' : '';
+    el.className = 'live ' + lv;
+    const msg = lv === 'full' ? '<br>지금은 자리가 없어요. 잠시 뒤에 다시 해 주세요.' : lv === 'warn' ? '<br>자리가 얼마 안 남았어요. 우리 반이 다 들어오기 어려울 수 있어요.' : '';
+    el.innerHTML = `지금 접속 중 <b>${n}</b> / ${LIVE_MAX}명${msg}`;
+  });
+}
+function showHome(){ S.code = null; app.innerHTML = homeHTML(); history.replaceState(null, '', location.pathname); updateLive(); }
 function showJoin(code){ S.code = null; app.innerHTML = joinHTML(code); setTimeout(() => { const el = code ? $('#jName') : $('#jCode'); if (el) el.focus(); }, 50); }
 
 document.addEventListener('click', async e => {
@@ -1546,6 +1573,7 @@ document.addEventListener('submit', async e => {
     showHome(); return;
   }
   $('#modeflag').textContent = B.mode === 'local' ? 'DEMO MODE · 같은 브라우저 탭끼리만 연결' : '';
+  if (B.trackPresence) B.trackPresence(n => { S.liveCount = n; updateLive(); });
   const q = new URLSearchParams(location.search);
   if (q.get('host')) { if (await resumeHost(q.get('host'))) { hostListenSkip(); return; } showHome(); return; }
   if (q.get('room')) {
