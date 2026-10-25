@@ -688,7 +688,15 @@ async function resumeHost(code){
   return true;
 }
 
-function saveSetting(k, v){ const st = { ...settings(), [k]: v }; B.update(roomPath('meta/settings'), { [k]: v }); S.meta = { ...S.meta, settings: st }; render(true); }
+/* 그리는 친구 수에 따라 고를 수 있는 한 사람 시간 */
+const TURN_OPTS = { 1: [20, 30, 60], 2: [15, 20, 30], 3: [10, 15, 20] };
+function turnOpts(n){ return TURN_OPTS[n] || TURN_OPTS[3]; }
+function saveSetting(k, v){
+  const upd = { [k]: v };
+  if (k === 'drawers') { const opts = turnOpts(v); if (!opts.includes(settings().turn)) upd.turn = opts[1]; }
+  const st = { ...settings(), ...upd };
+  B.update(roomPath('meta/settings'), upd); S.meta = { ...S.meta, settings: st }; render(true);
+}
 
 async function startRound(){
   const st = settings();
@@ -1021,7 +1029,7 @@ function hostLobbyHTML(){
       <div class="panel y">
         <div class="panel-h"><span class="tagpix" style="color:var(--yellow)">SETTING</span><span class="muted" style="font-size:17px">시작 전에 정해요</span></div>
         <div class="set-row"><span class="lb">격자 크기</span>${segBtns('grid', [[8, '8×8'], [12, '12×12'], [16, '16×16']])}</div>
-        <div class="set-row"><span class="lb">한 사람 시간</span>${segBtns('turn', [[10, '10초'], [15, '15초'], [20, '20초'], [30, '30초'], [60, '60초']])}</div>
+        <div class="set-row"><span class="lb">한 사람 시간</span>${segBtns('turn', turnOpts(st.drawers).map(v => [v, v + '초']))}</div>
         <div class="set-row"><span class="lb">그리는 친구</span>${segBtns('drawers', [[1, '1명'], [2, '2명'], [3, '3명']])}</div>
         <div class="set-row"><span class="lb">라운드</span>${segBtns('rounds', [[5, '5'], [8, '8'], [10, '10'], [15, '15']])}</div>
         <div class="set-row"><span class="lb">분야 힌트</span>${segBtns('hint', [['always', '처음부터'], ['half', '중간에'], ['never', '안 보여줌']])}</div>
