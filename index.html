@@ -176,6 +176,57 @@ input,textarea{font-family:var(--ko)}
 .msg.bad{border-color:var(--pink);color:var(--pink)}
 .wait-big{font-size:28px;text-align:center;line-height:1.4}
 
+/* 그림판 + 옆 칸 (폰: 위아래, 넓은 화면: 좌우) */
+.play .p-side{display:contents}
+.play .p-canvas{order:2}
+.play .p-side > *{order:1}
+.play .p-side > .after{order:3}
+.play .spacer{display:none}
+.p-title{font-size:20px}
+.p-score{font-size:14px}
+.p-note{text-align:center;font-size:16px}
+.done-btn{height:52px;font-size:20px}
+.hint-row{display:flex;align-items:center;justify-content:space-between;min-height:36px;gap:8px}
+.p-letters{font-size:17px}
+.miss-t{font-size:18px;color:var(--pink)}
+.secret b.hid{color:var(--muted);letter-spacing:6px}
+.peek{height:40px;padding:0 12px;background:transparent;border:3px solid var(--yellow);color:var(--yellow);font-size:17px;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none;white-space:nowrap}
+.peek.on{background:var(--yellow);color:var(--bg)}
+.peek.need{animation:needPulse .7s steps(2,start) infinite}
+@keyframes needPulse{to{background:var(--yellow);color:var(--bg)}}
+@media (min-width: 900px) and (min-aspect-ratio: 5/4){
+  .phone.play{--cv:min(calc(100vh - 48px), 58vw);max-width:none;display:grid;grid-template-columns:var(--cv) minmax(340px,560px);justify-content:center;align-items:start;column-gap:32px;padding:24px 32px;min-height:100vh}
+  .play .p-canvas{width:var(--cv);order:0;grid-column:1;grid-row:1}
+  .play .p-side{order:0;grid-column:2;grid-row:1}
+  .play .p-side{display:flex;flex-direction:column;gap:16px;min-height:calc(100vh - 48px)}
+  .play .spacer{display:block;flex:1}
+  .play .p-title{font-size:28px}
+  .play .p-time{font-size:28px}
+  .play .p-score{font-size:18px}
+  .play .scorebar{padding:12px 16px;border-width:3px}
+  .play .secret{padding:14px 18px;border-width:4px}
+  .play .secret b{font-size:44px}
+  .play .palette{grid-template-columns:repeat(4,1fr);gap:10px}
+  .play .palette button{height:56px}
+  .play .tools .btn{height:52px;font-size:20px}
+  .play .done-btn{height:64px;font-size:26px}
+  .play .p-note{font-size:18px}
+  .play .hint-row{padding:14px 16px;background:var(--panel);border:4px solid var(--yellow)}
+  .play .hint-cat{font-size:24px}
+  .play .p-letters{font-size:22px}
+  .play .lives svg{width:28px;height:25px}
+  .play .miss-box{flex:1;min-height:120px;padding:14px 16px;background:var(--panel);border:4px solid var(--pink)}
+  .play .miss-t{font-size:24px}
+  .play .misses{max-height:none;overflow:auto;flex:1;align-content:flex-start;align-items:flex-start}
+  .play .misses span.w{font-size:21px}
+  .play .inp{height:60px;font-size:24px}
+}
+@supports (height: 100dvh){
+  @media (min-width: 900px) and (min-aspect-ratio: 5/4){
+    .phone.play{--cv:min(calc(100dvh - 48px), 58vw);min-height:100dvh}
+    .play .p-side{min-height:calc(100dvh - 48px)}
+  }
+}
 .toast{position:fixed;left:50%;top:18px;transform:translateX(-50%);background:var(--yellow);color:var(--bg);padding:10px 16px;font-size:20px;z-index:50;box-shadow:4px 4px 0 var(--yellow-d)}
 /* animations */
 @keyframes enter{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
@@ -1125,6 +1176,7 @@ function renderPlayer(force){
   const gi = $('#guessInput'); if (gi && keepInput && tries === S._lastTries) gi.value = keepInput;
   if (gi && hadFocus) gi.focus();
   updateMisses();
+  if (s.phase === 'drawing' && amDrawer) { startAutoPeek(); applyPeek(); }
   if (pScreenChanged) animateEnter();
   if (s.phase === 'drawing' && S._lastTriesR === s.round && tries > (S._lastTriesN || 0)) {
     const lv = document.querySelector('.lives'); if (lv) lv.classList.add('shake');
@@ -1138,6 +1190,30 @@ function renderPlayer(force){
   requestAnimationFrame(paintCanvases);
 }
 
+/* 제시어 가리기: 차례 처음 2초 보여주고, 그 뒤엔 꾹 누르는 동안만 */
+function applyPeek(){
+  const b = $('#secretWord'); if (!b) return;
+  const now = Date.now();
+  const auto = S._peekFrom && now >= S._peekFrom && now < S._peekUntil;
+  const on = !!(auto || S._holding);
+  b.textContent = on ? b.dataset.word : '???';
+  b.classList.toggle('hid', !on);
+  const btn = $('#peekBtn');
+  if (btn) {
+    btn.classList.toggle('on', on);
+    btn.classList.toggle('need', !on && !S._peeked && S._peekUntil && now >= S._peekUntil);
+    btn.textContent = auto ? '곧 가려져요' : '꾹 눌러 보기';
+  }
+}
+function startAutoPeek(){
+  const s = S.state;
+  if (!s || S._autoPeekRound === s.round) return;
+  S._autoPeekRound = s.round; S._peeked = false; S._holding = false;
+  const delay = document.querySelector('.splash') ? 1600 : 200;
+  S._peekFrom = Date.now() + delay; S._peekUntil = S._peekFrom + 2000;
+  let first = false; try { first = !sessionStorage.getItem('pcm-peek-tip'); sessionStorage.setItem('pcm-peek-tip', '1'); } catch (e) {}
+  if (first) setTimeout(() => toast('옆 친구가 못 보게 가리고, 꾹 눌러 확인해요', 2600), delay);
+}
 function updateMisses(){
   const box = $('#missList'); if (!box || !S.state || S.state.phase !== 'drawing') return;
   const d = drawersArr(); const list = [];
@@ -1189,27 +1265,37 @@ function playerDrawerHTML(){
   const myIdx = d.indexOf(S.pid);
   const mine = s.drawerIdx === myIdx;
   const done = s.drawerIdx > myIdx;
-  let left, status;
-  if (mine) left = `<div style="display:flex;align-items:center;gap:10px"><span class="turn-tag">${myIdx + 1}P TURN</span><span style="font-size:20px">내 차례!</span></div>`;
-  else if (done) left = `<div style="display:flex;flex-direction:column;gap:6px"><span class="pix" style="font-size:10px;color:var(--green)">${myIdx + 1}P CLEAR</span><span style="font-size:20px">친구가 이어 그려요</span></div>`;
-  else left = `<div style="display:flex;flex-direction:column;gap:6px"><span class="pix" style="font-size:10px;color:var(--yellow)">${myIdx + 1}P READY</span><span style="font-size:20px">${s.drawerIdx < d.length ? esc(nameOf(d[s.drawerIdx])) + ' 다음에 그려요' : ''}</span></div>`;
+  let left;
+  if (mine) left = `<div style="display:flex;align-items:center;gap:10px"><span class="turn-tag">${myIdx + 1}P TURN</span><span class="p-title">내 차례!</span></div>`;
+  else if (done) left = `<div style="display:flex;flex-direction:column;gap:6px"><span class="pix" style="font-size:10px;color:var(--green)">${myIdx + 1}P CLEAR</span><span class="p-title">친구가 이어 그려요</span></div>`;
+  else left = `<div style="display:flex;flex-direction:column;gap:6px"><span class="pix" style="font-size:10px;color:var(--yellow)">${myIdx + 1}P READY</span><span class="p-title">${s.drawerIdx < d.length ? esc(nameOf(d[s.drawerIdx])) + ' 다음에 그려요' : ''}</span></div>`;
   const next = d[myIdx + 1];
+  const prev = d[myIdx - 1];
   const pal = COLORS.slice(1).map((c, i) => `<button aria-label="${COLOR_NAMES[i + 1]}" data-color="${i + 1}" style="background:${c}" class="${!S.eraser && S.color === i + 1 ? 'on' : ''}"></button>`).join('');
-  return `<div class="phone">
-    ${phoneTop(left, `<span class="p-time" id="turnTime">00:00</span>`)}
-    <div id="turnSeg">${seg10(1, 'y')}</div>
-    <div class="secret"><div style="display:flex;flex-direction:column;gap:6px"><span class="pix" style="font-size:9px;color:var(--pink)">SECRET WORD</span><b>${esc(s.word)}</b></div>${s.cat ? `<span class="hint-cat">${esc(s.cat)}</span>` : ''}</div>
-    <div class="grid-wrap grid-frame"><canvas data-grid="${mine ? 'edit' : 'view'}" aria-label="${mine ? '눌러서 칸을 칠해요' : '친구가 그리는 그림'}"></canvas></div>
-    ${mine ? `<div class="palette" role="group" aria-label="색 고르기">${pal}</div>
-      <div class="tools">
-        <button class="btn ghost" data-act="undo">되돌리기</button>
-        <button class="btn ghost ${S.eraser ? 'on' : ''}" data-act="eraser">지우개</button>
-        <button class="btn ghost" data-act="clearall">전체 지우기</button>
+  return `<div class="phone play">
+    <div class="p-canvas"><div class="grid-wrap grid-frame"><canvas data-grid="${mine ? 'edit' : 'view'}" aria-label="${mine ? '눌러서 칸을 칠해요' : '친구가 그리는 그림'}"></canvas></div></div>
+    <div class="p-side">
+      ${phoneTop(left, `<span class="p-time" id="turnTime">00:00</span>`)}
+      <div id="turnSeg">${seg10(1, 'y')}</div>
+      <div class="secret">
+        <div style="display:flex;flex-direction:column;gap:6px;min-width:0"><span class="pix" style="font-size:9px;color:var(--pink)">SECRET WORD</span><b id="secretWord" class="hid" data-word="${esc(s.word)}">???</b></div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
+          ${s.cat ? `<span class="hint-cat">${esc(s.cat)}</span>` : ''}
+          <button type="button" class="peek" id="peekBtn" aria-label="누르고 있는 동안 제시어 보기">꾹 눌러 보기</button>
+        </div>
       </div>
-      <button class="btn pink" data-act="done" style="height:52px;font-size:20px">다 그렸어요 ▶</button>
-      <div class="muted" style="text-align:center;font-size:16px">${next ? '다음 차례: ' + esc(nameOf(next)) : '내가 마지막이에요'}</div>`
-    : `<div class="msg">${done ? '내 차례 끝! 친구들이 맞히길 기다려요' : '내 차례가 오면 바로 칠할 수 있어요'}</div>
-       <div class="muted" style="text-align:center;font-size:16px">제시어는 소리 내어 말하면 안 돼요</div>`}
+      ${mine ? `<div class="palette after" role="group" aria-label="색 고르기">${pal}</div>
+        <div class="tools after">
+          <button class="btn ghost" data-act="undo">되돌리기</button>
+          <button class="btn ghost ${S.eraser ? 'on' : ''}" data-act="eraser">지우개</button>
+          <button class="btn ghost" data-act="clearall">전체 지우기</button>
+        </div>
+        <div class="spacer after"></div>
+        <button class="btn pink after done-btn" data-act="done">다 그렸어요 ▶</button>
+        <div class="muted after p-note">${prev ? esc(nameOf(prev)) + ' 그림 위에 이어서 그려요 · ' : ''}${next ? '다음 차례: ' + esc(nameOf(next)) : '내가 마지막이에요'}</div>`
+      : `<div class="msg after">${done ? '내 차례 끝! 친구들이 맞히길 기다려요' : '내 차례가 오면 바로 칠할 수 있어요'}</div>
+         <div class="muted after p-note">제시어는 소리 내어 말하면 안 돼요</div>`}
+    </div>
   </div>`;
 }
 
@@ -1220,23 +1306,25 @@ function playerGuesserHTML(){
   const hearts = Array.from({ length: MAX_TRIES }, (_, i) => heartSVG(i < left)).join('');
   const d = drawersArr();
   const drawingName = s.drawerIdx < d.length ? nameOf(d[s.drawerIdx]) : '';
-  return `<div class="phone">
-    ${phoneTop(`<div style="display:flex;flex-direction:column;gap:6px"><span class="pix" style="font-size:10px;color:var(--pink)">ROUND ${s.round}/${settings().rounds}</span><span style="font-size:22px">${drawingName ? esc(drawingName) + ' 친구가 그리는 중' : '마지막 추측 시간!'}</span></div>`,
-      `<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px"><span class="pix muted" style="font-size:10px">TIME</span><span class="p-time" id="roundTime">00:00</span></div>`)}
-    <div class="scorebar"><span class="pix muted" style="font-size:10px">SCORE</span><span class="pix" style="font-size:14px;color:var(--green)">${pad5(me.score)}</span></div>
-    <div class="grid-wrap grid-frame"><canvas data-grid="view" aria-label="친구들이 그리는 픽셀 그림"></canvas></div>
-    <div style="display:flex;align-items:center;justify-content:space-between;min-height:36px;gap:8px">
-      <div style="display:flex;align-items:center;gap:8px"><span class="pix muted" style="font-size:9px">HINT</span><span id="hintCat" class="hint-cat off">???</span><span class="muted" style="font-size:17px">${letterCount(s.word)}글자</span></div>
-      <div class="lives" role="img" aria-label="남은 기회 ${left}번"><span class="pix muted" style="font-size:9px">LIFE</span>${hearts}</div>
+  return `<div class="phone play">
+    <div class="p-canvas"><div class="grid-wrap grid-frame"><canvas data-grid="view" aria-label="친구들이 그리는 픽셀 그림"></canvas></div></div>
+    <div class="p-side">
+      ${phoneTop(`<div style="display:flex;flex-direction:column;gap:6px"><span class="pix" style="font-size:10px;color:var(--pink)">ROUND ${s.round}/${settings().rounds}</span><span class="p-title">${drawingName ? esc(drawingName) + ' 친구가 그리는 중' : '마지막 추측 시간!'}</span></div>`,
+        `<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px"><span class="pix muted" style="font-size:10px">TIME</span><span class="p-time" id="roundTime">00:00</span></div>`)}
+      <div class="scorebar"><span class="pix muted" style="font-size:10px">SCORE</span><span class="pix p-score" style="color:var(--green)">${pad5(me.score)}</span></div>
+      <div class="hint-row after">
+        <div style="display:flex;align-items:center;gap:8px"><span class="pix muted" style="font-size:9px">HINT</span><span id="hintCat" class="hint-cat off">???</span><span class="muted p-letters">${letterCount(s.word)}글자</span></div>
+        <div class="lives" role="img" aria-label="남은 기회 ${left}번"><span class="pix muted" style="font-size:9px">LIFE</span>${hearts}</div>
+      </div>
+      <div class="miss-box after">
+        <div class="miss-h"><span class="miss-t">땡!</span><span class="muted" style="font-size:15px">친구들이 낸 틀린 답</span></div>
+        <div class="misses" id="missList"></div>
+      </div>
+      ${left > 0 ? `<form class="guess-row after" id="guessForm" autocomplete="off">
+          <div class="field"><label for="guessInput">정답 입력</label><input id="guessInput" class="inp" maxlength="20" placeholder="여기에 써요" enterkeyhint="send"></div>
+          <button class="btn pink" type="submit" style="height:56px">${left === 1 ? '마지막 제출' : '제출'}</button>
+        </form>` : `<div class="msg bad after">기회를 다 썼어요. 그림을 보며 기다려요!</div>`}
     </div>
-    <div class="miss-box">
-      <div class="miss-h"><span style="font-size:18px;color:var(--pink)">땡!</span><span class="muted" style="font-size:15px">친구들이 낸 틀린 답</span></div>
-      <div class="misses" id="missList"></div>
-    </div>
-    ${left > 0 ? `<form class="guess-row" id="guessForm" autocomplete="off">
-        <div class="field"><label for="guessInput">정답 입력</label><input id="guessInput" class="inp" maxlength="20" placeholder="여기에 써요" enterkeyhint="send"></div>
-        <button class="btn pink" type="submit" style="height:56px">${left === 1 ? '마지막 제출' : '제출'}</button>
-      </form>` : `<div class="msg bad">기회를 다 썼어요. 그림을 보며 기다려요!</div>`}
   </div>`;
 }
 
@@ -1245,13 +1333,15 @@ function playerResultHTML(){
   const d = drawersArr();
   const got = w && (w.pid === S.pid || d.includes(S.pid));
   const head = w ? (w.pid === S.pid ? '내가 맞혔어요!' : d.includes(S.pid) ? '우리 팀 그림을 맞혔어요!' : esc(w.name) + ' 친구가 맞혔어요') : '아무도 못 맞혔어요';
-  return `<div class="phone">
-    ${phoneTop(`<span class="pix" style="font-size:12px;color:${w ? 'var(--yellow)' : 'var(--pink)'}">${w ? 'NICE CATCH!' : 'TIME OVER'}</span>`, `<span class="pix" style="font-size:12px;color:var(--green)">${pad5(me.score)}</span>`)}
-    <div class="answer" style="margin:6px 0"><span class="pix muted" style="font-size:10px">ANSWER</span><b style="font-size:40px">${esc(s.word)}</b></div>
-    <div class="grid-wrap grid-frame"><canvas data-grid="view" aria-label="완성된 그림"></canvas></div>
-    <div class="msg ${got ? 'ok' : ''}" style="font-size:24px">${head}${got ? `<br><span class="pix" style="font-size:18px">+${w.points}</span>` : ''}</div>
-    ${S.practice ? `<button class="btn" data-act="pnext" style="height:58px;font-size:22px">${s.round >= settings().rounds ? '최종 순위 보기 ▶' : '다음 라운드 ▶'}</button>`
-      : '<div class="muted" style="text-align:center;font-size:17px">선생님이 다음 라운드를 열 때까지 기다려요</div>'}
+  return `<div class="phone play">
+    <div class="p-canvas"><div class="grid-wrap grid-frame"><canvas data-grid="view" aria-label="완성된 그림"></canvas></div></div>
+    <div class="p-side">
+      ${phoneTop(`<span class="pix" style="font-size:12px;color:${w ? 'var(--yellow)' : 'var(--pink)'}">${w ? 'NICE CATCH!' : 'TIME OVER'}</span>`, `<span class="pix" style="font-size:12px;color:var(--green)">${pad5(me.score)}</span>`)}
+      <div class="answer" style="margin:6px 0"><span class="pix muted" style="font-size:10px">ANSWER</span><b style="font-size:40px">${esc(s.word)}</b></div>
+      <div class="msg after ${got ? 'ok' : ''}" style="font-size:24px">${head}${got ? `<br><span class="pix" style="font-size:18px">+${w.points}</span>` : ''}</div>
+      ${S.practice ? `<button class="btn after" data-act="pnext" style="height:58px;font-size:22px">${s.round >= settings().rounds ? '최종 순위 보기 ▶' : '다음 라운드 ▶'}</button>`
+        : '<div class="muted after" style="text-align:center;font-size:17px">선생님이 다음 라운드를 열 때까지 기다려요</div>'}
+    </div>
   </div>`;
 }
 
@@ -1274,6 +1364,7 @@ function playerEndHTML(){
 /* 매 0.25초 바뀌는 부분 */
 function updateDynamic(){
   const s = S.state; if (!s || s.phase !== 'drawing' || !B) return;
+  applyPeek();
   const now = B.now();
   const st = settings();
   const d = drawersArr();
@@ -1341,6 +1432,15 @@ document.addEventListener('input', e => {
   if (e.target.id === 'custom') { clearTimeout(S._ct); const v = e.target.value; const cc = $('#customCount'); if (cc) cc.textContent = parseCustom(v).length; S._ct = setTimeout(() => { B.update(roomPath('meta/settings'), { custom: v }); S.meta.settings.custom = v; }, 400); }
 });
 window.addEventListener('resize', () => paintCanvases());
+document.addEventListener('pointerdown', e => {
+  const b = e.target.closest('#peekBtn'); if (!b) return;
+  e.preventDefault(); try { b.setPointerCapture(e.pointerId); } catch (er) {}
+  S._holding = true; S._peeked = true; S._peekUntil = Math.min(S._peekUntil || 0, Date.now()); applyPeek();
+});
+['pointerup', 'pointercancel'].forEach(t => document.addEventListener(t, () => { if (S._holding) { S._holding = false; applyPeek(); } }));
+document.addEventListener('contextmenu', e => { if (e.target.closest('#peekBtn')) e.preventDefault(); });
+document.addEventListener('keydown', e => { if (e.target.id === 'peekBtn' && (e.key === ' ' || e.key === 'Enter')) { e.preventDefault(); S._holding = true; S._peeked = true; applyPeek(); } });
+document.addEventListener('keyup', e => { if (e.target.id === 'peekBtn' && (e.key === ' ' || e.key === 'Enter')) { S._holding = false; applyPeek(); } });
 
 /* =========================================================
    10) 첫 화면
@@ -1352,8 +1452,9 @@ function homeHTML(){
     <div style="display:flex;justify-content:center">${logoHTML()}</div>
     <div class="pix blink" style="text-align:center;font-size:12px;color:var(--yellow)">PRESS START</div>
     <div class="home-btns">
-      <button class="btn" data-home="join"><span>학생 · 방 들어가기</span><span class="pix">PLAYER</span></button>
-      <button class="btn pink" data-home="host"><span>선생님 · 방 만들기</span><span class="pix">HOST</span></button>
+      ${S.offline ? '<div class="msg bad" style="font-size:18px">서버에 연결하지 못했어요. 인터넷 연결을 확인해 주세요.<br>지금은 혼자 연습만 할 수 있어요.</div>' : ''}
+      <button class="btn" data-home="join" ${S.offline ? 'disabled' : ''}><span>학생 · 방 들어가기</span><span class="pix">PLAYER</span></button>
+      <button class="btn pink" data-home="host" ${S.offline ? 'disabled' : ''}><span>선생님 · 방 만들기</span><span class="pix">HOST</span></button>
       <button class="btn yellow" data-home="practice"><span>혼자 연습 · 컴퓨터 친구와</span><span class="pix">1P</span></button>
       ${recent ? `<button class="btn ghost" data-home="resume"><span>만든 방 이어서 열기 (${esc(saved.code)})</span><span class="pix">CONT</span></button>` : ''}
     </div>
@@ -1423,8 +1524,8 @@ document.addEventListener('submit', async e => {
     B = FIREBASE_CONFIG ? await makeFirebaseBackend(FIREBASE_CONFIG) : makeLocalBackend();
   } catch (e) {
     console.error(e);
-    app.innerHTML = '<div class="center"><div class="card"><div class="msg bad">서버에 연결하지 못했어요. 인터넷 연결을 확인해 주세요.</div></div></div>';
-    return;
+    B = makeLocalBackend(true); S.offline = true;
+    showHome(); return;
   }
   $('#modeflag').textContent = B.mode === 'local' ? 'DEMO MODE · 같은 브라우저 탭끼리만 연결' : '';
   const q = new URLSearchParams(location.search);
