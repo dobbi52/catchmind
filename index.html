@@ -1029,8 +1029,8 @@ function hostLobbyHTML(){
       <div class="panel y">
         <div class="panel-h"><span class="tagpix" style="color:var(--yellow)">SETTING</span><span class="muted" style="font-size:17px">시작 전에 정해요</span></div>
         <div class="set-row"><span class="lb">격자 크기</span>${segBtns('grid', [[8, '8×8'], [12, '12×12'], [16, '16×16']])}</div>
-        <div class="set-row"><span class="lb">한 사람 시간</span>${segBtns('turn', turnOpts(st.drawers).map(v => [v, v + '초']))}</div>
         <div class="set-row"><span class="lb">그리는 친구</span>${segBtns('drawers', [[1, '1명'], [2, '2명'], [3, '3명']])}</div>
+        <div class="set-row"><span class="lb">한 사람 시간</span>${segBtns('turn', turnOpts(st.drawers).map(v => [v, v + '초']))}</div>
         <div class="set-row"><span class="lb">라운드</span>${segBtns('rounds', [[5, '5'], [8, '8'], [10, '10'], [15, '15']])}</div>
         <div class="set-row"><span class="lb">분야 힌트</span>${segBtns('hint', [['always', '처음부터'], ['half', '중간에'], ['never', '안 보여줌']])}</div>
         <div class="set-row"><span class="lb">제시어</span>${segBtns('useCustom', [[false, '기본 목록'], [true, '직접 입력']])}</div>
