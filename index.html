@@ -137,7 +137,7 @@ input,textarea{font-family:var(--ko)}
 .bonus-row .s{font-family:var(--pix);font-size:13px;color:var(--green)}
 .answer{display:flex;align-items:center;gap:14px;justify-content:center}
 .answer b{font-size:46px;color:var(--yellow);font-weight:normal}
-.podium{display:flex;gap:18px;align-items:flex-end;justify-content:center;margin:10px 0 6px}
+.podium{display:flex;gap:18px;align-items:flex-end;justify-content:center;margin:4px 0 2px}
 .pod{display:flex;flex-direction:column;align-items:center;gap:8px;width:170px}
 .pod .nm{font-size:28px;text-align:center}
 .pod .bar{width:100%;display:flex;align-items:flex-start;justify-content:center;padding-top:12px;font-family:var(--pix);font-size:22px;color:var(--bg)}
@@ -1154,12 +1154,12 @@ function hostResultHTML(){
 function hostEndHTML(){
   const list = withRanks();
   const top = list.slice(0, 3);
-  const heights = { 1: 200, 2: 150, 3: 110 };
+  const heights = { 1: 160, 2: 120, 3: 90 };
   const order = [1, 0, 2].filter(i => top[i]);
   return `<div class="board">${topbarHTML('<div class="chip round">GAME OVER</div>')}
   <div class="b-main" style="flex-direction:column;align-items:center">
     <div class="pix" style="font-size:22px;color:var(--yellow);text-align:center;margin-top:6px">FINAL RANKING</div>
-    <div class="podium">${order.map(i => `<div class="pod"><span class="pix" style="font-size:12px;color:${rankColor(top[i].rank)}">${rankLabel(top[i].rank)}</span><span class="nm">${esc(top[i].name)}</span><div class="bar" style="height:${heights[top[i].rank] || 110}px;background:${rankColor(top[i].rank)}">${top[i].score || 0}</div></div>`).join('')}</div>
+    <div class="podium">${order.map(i => `<div class="pod"><span class="pix" style="font-size:12px;color:${rankColor(top[i].rank)}">${rankLabel(top[i].rank)}</span><span class="nm">${esc(top[i].name)}</span><div class="bar" style="height:${heights[top[i].rank] || 90}px;background:${rankColor(top[i].rank)}">${top[i].score || 0}</div></div>`).join('')}</div>
     <div class="panel y" style="width:min(100%,720px)">
       <div class="panel-h"><span class="tagpix" style="color:var(--yellow)">ALL PLAYERS</span><span class="muted" style="font-size:17px">${list.length}명</span></div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));column-gap:24px">
