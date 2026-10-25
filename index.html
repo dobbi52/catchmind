@@ -1033,6 +1033,7 @@ function hostLobbyHTML(){
         <div class="set-row"><span class="lb">그리는 친구</span>${segBtns('drawers', [[1, '1명'], [2, '2명'], [3, '3명']])}</div>
         <div class="set-row"><span class="lb">한 사람 시간</span>${segBtns('turn', turnOpts(st.drawers).map(v => [v, v + '초']))}</div>
         <div class="set-row"><span class="lb">라운드</span>${segBtns('rounds', [[5, '5'], [8, '8'], [10, '10'], [15, '15']])}</div>
+        <div class="set-row"><span class="lb">그림 팀 이름</span>${segBtns('anon', [[false, '보여줌'], [true, '숨김(결과에서 공개)']])}</div>
         <div class="set-row"><span class="lb">분야 힌트</span>${segBtns('hint', [['always', '처음부터'], ['half', '중간에'], ['never', '안 보여줌']])}</div>
         <div class="set-row"><span class="lb">제시어</span>${segBtns('useCustom', [[false, '기본 목록'], [true, '직접 입력']])}</div>
         ${st.useCustom ? `<div class="set-row" style="flex-direction:column;align-items:stretch">
@@ -1084,7 +1085,7 @@ function drawerCardsHTML(){
     const nowBits = cls === 'now' ? `<div style="display:flex;flex-direction:column;gap:6px"><span class="tm" id="turnTime">00:00</span><div id="turnSeg">${seg10(1)}</div></div>` : status;
     return `<div class="dcard ${cls}">
       <div style="display:flex;justify-content:space-between"><span class="pix" style="font-size:10px">${i + 1}P</span>${cls === 'now' ? '<span class="pix" style="font-size:10px">DRAWING</span>' : ''}</div>
-      <span class="nm">${esc(nameOf(id))}</span>${nowBits}</div>`;
+      <span class="nm">${settings().anon ? '???' : esc(nameOf(id))}</span>${nowBits}</div>`;
   }).join('');
 }
 
@@ -1326,7 +1327,7 @@ function playerGuesserHTML(){
   return `<div class="phone play">
     <div class="p-canvas"><div class="grid-wrap grid-frame"><canvas data-grid="view" aria-label="친구들이 그리는 픽셀 그림"></canvas></div></div>
     <div class="p-side">
-      ${phoneTop(`<div style="display:flex;flex-direction:column;gap:6px"><span class="pix" style="font-size:10px;color:var(--pink)">ROUND ${s.round}/${settings().rounds}</span><span class="p-title">${drawingName ? esc(drawingName) + ' 친구가 그리는 중' : '마지막 추측 시간!'}</span></div>`,
+      ${phoneTop(`<div style="display:flex;flex-direction:column;gap:6px"><span class="pix" style="font-size:10px;color:var(--pink)">ROUND ${s.round}/${settings().rounds}</span><span class="p-title">${drawingName ? (settings().anon ? (s.drawerIdx + 1) + '번째 친구가 그리는 중' : esc(drawingName) + ' 친구가 그리는 중') : '마지막 추측 시간!'}</span></div>`,
         `<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px"><span class="pix muted" style="font-size:10px">TIME</span><span class="p-time" id="roundTime">00:00</span></div>`)}
       <div class="scorebar"><span class="pix muted" style="font-size:10px">SCORE</span><span class="pix p-score" style="color:var(--green)">${pad5(me.score)}</span></div>
       <div class="hint-row after">
