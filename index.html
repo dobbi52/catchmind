@@ -616,8 +616,8 @@ const S = {
 function players(){ return Object.entries(S.players || {}).map(([id, p]) => ({ id, ...p })); }
 function onlinePlayers(){ return players().filter(p => p.online !== false); }
 function nameOf(id){ return (S.players && S.players[id] && S.players[id].name) || '?'; }
-function settings(){ return (S.meta && S.meta.settings) || defaultSettings(); }
-function defaultSettings(){ return { grid: 12, turn: 20, drawers: 3, rounds: 10, hint: 'always', cats: ['동물', '과일·채소', '음식', '물건', '장소', '자연·날씨', '탈것'], custom: '', useCustom: false }; }
+function settings(){ return { ...defaultSettings(), ...((S.meta && S.meta.settings) || {}) }; }
+function defaultSettings(){ return { grid: 12, turn: 20, drawers: 3, rounds: 10, autoNext: 0, anon: false, hint: 'always', cats: ['동물', '과일·채소', '음식', '물건', '장소', '자연·날씨', '탈것'], custom: '', useCustom: false }; }
 function roomPath(sub = ''){ return 'rooms/' + S.code + (sub ? '/' + sub : ''); }
 function drawersArr(){ const d = S.state && S.state.drawers; if (!d) return []; return Array.isArray(d) ? d : Object.values(d); }
 function roundTotal(){ return (S.state && S.state.total) || 0; }
