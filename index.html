@@ -1835,7 +1835,6 @@ function homeHTML(){
       <button class="btn pink" data-home="host" ${S.offline || S.noConn ? 'disabled' : ''}><span>선생님 · 방 만들기</span><span class="pix">HOST</span></button>
       <button class="btn blue" data-home="match" ${S.offline || S.noConn ? 'disabled' : ''}><span>랜덤 매칭 · 전국 친구와</span><span class="pix">2P+</span></button>
       <button class="btn yellow" data-home="practice"><span>혼자 연습 · 컴퓨터 친구와</span><span class="pix">1P</span></button>
-      ${recent ? `<button class="btn ghost" data-home="resume"><span>만든 방 이어서 열기 (${esc(saved.code)})</span><span class="pix">CONT</span></button>` : ''}
     </div>
     <div class="live" data-live hidden></div>
     <div class="note">선생님은 전자칠판에서 방을 만들고, 학생은 휴대폰이나 노트북으로 들어와요. 뽑힌 친구 1~3명이 픽셀로 이어 그리고, 나머지는 정답을 맞혀요.</div>
