@@ -527,6 +527,14 @@ function renderGridNow(cv){
 function emptyPx(n){ return '0'.repeat(n * n); }
 
 /* 효과 */
+function updateBgmButtons(){
+  document.querySelectorAll('[data-act="bgm"]').forEach(b => {
+    b.classList.toggle('on', Music.on);
+    b.textContent = Music.on ? 'BGM ON' : 'BGM OFF';
+    b.setAttribute('aria-pressed', Music.on);
+    b.title = '지금 곡: ' + TRACKS[Music.track].name;
+  });
+}
 function showSplash(t1, t2, color){
   const old = document.querySelector('.splash'); if (old) old.remove();
   const el = document.createElement('div');
@@ -549,11 +557,17 @@ function confetti(){
 function animateEnter(){ const el = app.firstElementChild; if (el) { el.classList.remove('enter'); void el.offsetWidth; el.classList.add('enter'); } }
 
 /* 배경음악: 직접 만든 8비트 곡 (Web Audio로 실시간 연주) */
-const MEL = [72,0,76,79,76,0,72,74, 76,0,72,69,72,0,76,77, 77,0,81,77,72,0,77,79, 79,0,74,71,74,76,79,0,
-             84,0,79,76,79,0,84,83, 81,0,76,72,76,0,81,79, 77,81,79,77,74,77,76,74, 72,0,76,0,72,0,0,0];
-const BASS = [48,55,48,55, 45,52,45,52, 41,48,41,48, 43,50,43,50, 48,55,48,55, 45,52,45,52, 41,48,43,50, 48,55,48,0];
+/* 직접 만든 8비트 곡 5개 — 게임을 시작할 때마다 하나를 골라요 */
+const TRACKS = [
+{ name: '픽셀 행진', bpm: 132, wave: 'square', mel: [72,0,76,79,76,0,72,74,76,0,72,69,72,0,76,77,77,0,81,77,72,0,77,79,79,0,74,71,74,76,79,0,84,0,79,76,79,0,84,83,81,0,76,72,76,0,81,79,77,81,79,77,74,77,76,74,72,0,76,0,72,0,0,0], bass: [48,55,48,55,45,52,45,52,41,48,41,48,43,50,43,50,48,55,48,55,45,52,45,52,41,48,43,50,48,55,48,0] },
+{ name: '통통 퍼즐', bpm: 140, wave: 'square', mel: [79,0,74,0,71,74,79,0,76,0,71,0,67,71,76,0,72,76,79,76,72,0,76,0,74,78,81,78,74,0,0,0,79,81,83,81,79,0,74,0,76,79,83,79,76,0,71,0,72,74,76,72,74,76,78,74,79,0,74,0,67,0,0,0], bass: [43,50,43,50,40,47,40,47,36,43,36,43,38,45,38,45,43,50,43,50,40,47,40,47,36,43,38,45,43,50,43,0] },
+{ name: '느긋한 오후', bpm: 104, wave: 'triangle', mel: [72,0,0,69,72,0,74,0,74,0,0,72,69,0,0,0,70,0,74,0,72,70,69,0,67,0,0,0,72,0,0,0,77,0,76,0,74,72,0,0,74,0,72,0,69,0,0,0,70,72,74,0,76,0,72,0,77,0,0,0,0,0,0,0], bass: [41,48,45,48,38,45,41,45,34,41,38,41,36,43,40,43,41,48,45,48,38,45,41,45,34,41,36,43,41,48,41,0] },
+{ name: '두근두근 추리', bpm: 150, wave: 'square', mel: [69,0,72,69,76,0,72,0,69,0,72,69,77,0,76,0,74,0,77,74,81,0,77,0,76,0,80,0,83,0,80,0,81,79,77,76,77,76,74,72,74,72,71,69,71,0,68,0,69,72,76,72,77,76,74,71,69,0,64,0,69,0,0,0], bass: [45,52,45,52,41,48,41,48,38,45,38,45,40,47,40,47,45,52,41,48,38,45,40,47,45,52,40,47,45,52,45,0] },
+{ name: '신나는 질주', bpm: 168, wave: 'square', mel: [74,78,81,78,86,0,81,0,83,0,79,0,74,79,83,0,81,0,78,0,74,78,81,0,81,83,85,83,81,0,0,0,86,0,85,83,81,0,78,0,79,0,83,0,86,0,83,0,81,79,78,76,78,79,81,85,86,0,81,0,74,0,0,0], bass: [38,45,38,45,43,50,43,50,38,45,38,45,45,52,45,52,38,45,38,45,43,50,43,50,45,52,45,52,38,45,38,0] }
+];
 const Music = {
-  ctx: null, master: null, on: false, timer: null, step: 0, next: 0, noiseBuf: null,
+  ctx: null, master: null, on: false, timer: null, step: 0, next: 0, noiseBuf: null, track: Math.floor(Math.random() * TRACKS.length),
+  pick(){ if (TRACKS.length > 1) { let t; do { t = Math.floor(Math.random() * TRACKS.length); } while (t === this.track); this.track = t; } this.step = 0; if (this.ctx) this.next = this.ctx.currentTime + 0.08; updateBgmButtons(); },
   init(){
     if (this.ctx) return;
     const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
@@ -566,8 +580,9 @@ const Music = {
   toggle(){ if (this.on) this.stop(); else this.start(); return this.on; },
   schedule(){
     const fast = S.state && S.state.phase === 'drawing' && S.state.turnEndsAt - B.now() < 5000;
-    const spb = 60 / (fast ? 168 : 132) / 2;
-    while (this.next < this.ctx.currentTime + 0.12) { this.play(this.step, this.next, spb); this.next += spb; this.step = (this.step + 1) % MEL.length; }
+    const T = TRACKS[this.track];
+    const spb = 60 / (T.bpm * (fast ? 1.25 : 1)) / 2;
+    while (this.next < this.ctx.currentTime + 0.12) { this.play(this.step, this.next, spb); this.next += spb; this.step = (this.step + 1) % T.mel.length; }
   },
   tone(type, midi, t, dur, vol){
     const o = this.ctx.createOscillator(), g = this.ctx.createGain();
@@ -577,8 +592,9 @@ const Music = {
   },
   hat(t){ const s = this.ctx.createBufferSource(), g = this.ctx.createGain(), f = this.ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 6000; s.buffer = this.noiseBuf; g.gain.setValueAtTime(0.25, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.04); s.connect(f); f.connect(g); g.connect(this.master); s.start(t); },
   play(i, t, spb){
-    if (MEL[i]) this.tone('square', MEL[i], t, spb * 0.85, 0.45);
-    if (i % 2 === 0 && BASS[i / 2]) this.tone('triangle', BASS[i / 2], t, spb * 1.8, 0.9);
+    const T = TRACKS[this.track];
+    if (T.mel[i]) this.tone(T.wave, T.mel[i], t, spb * 0.85, T.wave === 'triangle' ? 0.8 : 0.45);
+    if (i % 2 === 0 && T.bass[i / 2]) this.tone(T.wave === 'triangle' ? 'square' : 'triangle', T.bass[i / 2], t, spb * 1.8, T.wave === 'triangle' ? 0.25 : 0.9);
     if (i % 2 === 1) this.hat(t);
   }
 };
@@ -736,6 +752,7 @@ async function startRound(){
   S.used[norm(pick.word)] = true;
   const now = B.now();
   const round = ((S.state && S.state.round) || 0) + 1;
+  if (round === 1 && S.role === 'host') Music.pick();
   const total = (count * st.turn + FINAL_SEC) * 1000;
   const upd = {};
   upd['state'] = { phase: 'drawing', round, word: pick.word, syn: pick.syn || [], cat: pick.cat || '', drawers, drawerIdx: 0, roundStart: now, turnEndsAt: now + st.turn * 1000, total, winner: null };
@@ -1032,7 +1049,7 @@ function topbarHTML(rightExtra){
     <div class="chip">P ${onlinePlayers().length}</div>
     ${s.round ? `<div class="chip round">ROUND ${Math.min(s.round, st.rounds)}/${st.rounds}</div>` : ''}
     ${rightExtra || ''}
-    <button class="chip bgm ${Music.on ? 'on' : ''}" data-act="bgm" aria-pressed="${Music.on}" aria-label="배경음악 켜기 끄기">${Music.on ? 'BGM ON' : 'BGM OFF'}</button></div></div>`;
+    <button class="chip bgm ${Music.on ? 'on' : ''}" data-act="bgm" aria-pressed="${Music.on}" aria-label="배경음악 켜기 끄기" title="지금 곡: ${TRACKS[Music.track].name}">${Music.on ? 'BGM ON' : 'BGM OFF'}</button></div></div>`;
 }
 
 function joinURL(){ return location.origin + location.pathname + '?room=' + S.code; }
@@ -1503,7 +1520,7 @@ document.addEventListener('click', e => {
     S.localPx = emptyPx(n); S.myStrokes = true;
     paintCanvases(); writeCanvasSoon(true); toast('모두 지웠어요. 되돌리기로 살릴 수 있어요', 1600);
   }
-  else if (act === 'bgm') { const on = Music.toggle(); lsSet('pcm-bgm', on ? '1' : '0'); document.querySelectorAll('[data-act="bgm"]').forEach(b => { b.classList.toggle('on', on); b.textContent = on ? 'BGM ON' : 'BGM OFF'; b.setAttribute('aria-pressed', on); }); }
+  else if (act === 'bgm') { Music.toggle(); updateBgmButtons(); }
   else if (act === 'undo') { if (S.undo.length) { S.localPx = S.undo.pop(); paintCanvases(); writeCanvasSoon(true); } }
   else if (act === 'eraser') { S.eraser = !S.eraser; t.classList.toggle('on', S.eraser); document.querySelectorAll('.palette button').forEach(b => b.classList.toggle('on', !S.eraser && +b.dataset.color === S.color)); }
   else if (act === 'done') { if (isMyTurn()) { writeCanvasSoon(true); B.set(roomPath('skip'), { round: S.state.round, idx: S.state.drawerIdx, at: B.now() }); } }
