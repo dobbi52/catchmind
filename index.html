@@ -406,7 +406,8 @@ function makeLocalBackend(memoryOnly){
     async update(path, obj){ apply(Object.keys(obj).map(k => [path + '/' + k, obj[k]]), true); },
     push(path, v){ const id = genId(); apply([[path + '/' + id, v]], true); return id; },
     async remove(path){ apply([[path, null]], true); },
-    presence(path){ apply([[path, true]], true); if (!memoryOnly) window.addEventListener('pagehide', () => apply([[path, false]], true)); }
+    presence(path){ apply([[path, true]], true); this._pres = path; if (!memoryOnly) window.addEventListener('pagehide', () => { if (this._pres === path) apply([[path, false]], true); }); },
+    unpresence(){ this._pres = null; }
   };
 }
 
@@ -428,7 +429,8 @@ async function makeFirebaseBackend(cfg){
     update: (p, o) => d.ref(p).update(o),
     push(p, v){ const r = d.ref(p).push(); r.set(v); return r.key; },
     remove: p => d.ref(p).remove(),
-    presence(p){ const r = d.ref(p); d.ref('.info/connected').on('value', s => { if (s.val()) { r.onDisconnect().set(false); r.set(true); } }); },
+    presence(p){ const r = d.ref(p); this._pres = r; d.ref('.info/connected').on('value', s => { if (s.val() && this._pres === r) { r.onDisconnect().set(false); r.set(true); } }); },
+    unpresence(){ if (this._pres) { const r = this._pres; this._pres = null; return r.onDisconnect().cancel(); } },
     /* 지금 접속 중인 사람 수 (무료 요금제 동시 접속 100명 확인용) */
     trackPresence(onCount){
       const me = d.ref('presence/' + genId());
@@ -1035,6 +1037,7 @@ function hostLobbyHTML(){
       <div class="live" data-live hidden style="width:100%"></div>
       <button class="btn pink" data-act="start" style="height:60px;font-size:24px;width:100%" ${online < 2 ? 'disabled' : ''}>게임 시작 ▶</button>
       ${online < 2 ? '<div class="muted" style="font-size:16px">학생이 2명 이상 들어오면 시작할 수 있어요</div>' : ''}
+      <button class="btn ghost small" data-act="gohome" style="width:100%">처음으로</button>
     </div>
     <div class="lobby-right">
       <div class="panel p">
@@ -1181,7 +1184,7 @@ function hostEndHTML(){
         ${list.map(p => `<div class="rank-row"><span class="r" style="color:${rankColor(p.rank)}">${p.rank}</span><span class="n">${esc(p.name)}</span><span class="s">${pad5(p.score)}</span></div>`).join('')}
       </div>
     </div>
-    <div class="ctrls"><button class="btn pink" data-act="newgame" style="height:58px">같은 친구들과 새 게임</button></div>
+    <div class="ctrls"><button class="btn ghost" data-act="gohome" style="height:58px">처음으로</button><button class="btn pink" data-act="newgame" style="height:58px">같은 친구들과 새 게임</button></div>
   </div></div>`;
 }
 
@@ -1258,6 +1261,22 @@ function updateMisses(){
     ? list.map(g => `<span class="w ${g.pid === S.pid ? 'mine' : ''}">${esc(g.t)}<small>${g.pid === S.pid ? '나' : esc(nameOf(g.pid))}</small></span>`).join('')
     : '<span class="muted" style="font-size:16px">아직 없어요</span>';
 }
+/* 처음 화면으로: 선생님은 방을 닫고, 학생은 방에서 나가요 */
+async function goHome(){
+  try {
+    if (S.role === 'host') {
+      if (S.state && S.state.phase !== 'lobby' && S.state.phase !== 'end' && !confirm('게임 중이에요. 방을 닫고 처음 화면으로 갈까요?')) return;
+      if ((S.state && (S.state.phase === 'lobby' || S.state.phase === 'end')) && onlinePlayers().length && !confirm('방을 닫으면 들어온 학생들도 나가게 돼요. 처음 화면으로 갈까요?')) return;
+      const path = roomPath(); clearSubs(); await B.remove(path); lsDel('pcm-host');
+    } else if (S.role === 'player' && !S.practice) {
+      const path = roomPath('players/' + S.pid); clearSubs();
+      if (B.unpresence) await B.unpresence();
+      await B.remove(path);
+      try { pidStore().removeItem('pcm-pid-' + S.code); } catch (e) {}
+    }
+  } catch (e) { console.error(e); }
+  location.href = location.pathname;
+}
 function phoneTop(left, right){ return `<div class="p-top">${left}${right}</div>`; }
 
 function playerLobbyHTML(me){
@@ -1280,6 +1299,7 @@ function playerLobbyHTML(me){
       <div class="pix blink" style="font-size:13px;color:var(--yellow)">PLEASE WAIT</div>
       <div class="wait-big">선생님이 시작하면<br>게임이 열려요</div>
       <div class="note" style="text-align:left">뽑힌 1~3명이 차례로 이어서 그려요.<br>나머지 친구는 그림을 보고 정답을 입력해요. 기회는 ${MAX_TRIES}번!<br>누군가 맞히면 맞힌 친구와 그린 팀 모두 점수를 받아요.</div>
+      <button class="btn ghost small" data-act="gohome">방에서 나가기</button>
     </div>
   </div>`;
 }
@@ -1389,7 +1409,7 @@ function playerEndHTML(){
     ${S.practice ? `<div class="panel y" style="width:100%;text-align:left">${rankRows(4)}</div>
       <button class="btn pink" data-act="pagain" style="width:100%;height:58px;font-size:22px">한 번 더 하기</button>
       <button class="btn ghost small" data-act="phome">처음으로</button>`
-      : '<div class="muted" style="font-size:18px">큰 화면에서 전체 순위를 확인해요</div>'}
+      : '<div class="muted" style="font-size:18px">큰 화면에서 전체 순위를 확인해요</div><button class="btn ghost small" data-act="gohome">처음으로</button>'}
   </div></div>`;
 }
 
@@ -1435,6 +1455,7 @@ document.addEventListener('click', e => {
   else if (act === 'end') { if (confirm('게임을 끝내고 최종 순위를 볼까요?')) B.update(roomPath('state'), { phase: 'end' }); }
   else if (act === 'newgame') { if (confirm('점수를 0으로 되돌리고 새 게임을 시작할까요?')) hostNewGame(); }
   else if (act === 'wrongs') { S.showWrongs = !S.showWrongs; render(true); }
+  else if (act === 'gohome') { goHome(); }
   else if (act === 'pstart') { t.disabled = true; startRound(); }
   else if (act === 'pnext') { t.disabled = true; if (S.state.round >= settings().rounds) B.update(roomPath('state'), { phase: 'end' }); else startRound(); }
   else if (act === 'pagain') { t.disabled = true; hostNewGame().then(() => startRound()); }
