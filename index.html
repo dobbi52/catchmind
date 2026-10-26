@@ -1240,6 +1240,7 @@ function matchWaitingHTML(){
       <div class="wait-big"><b style="color:var(--blue);font-weight:normal">${on.length} / ${MATCH_CAP}</b>명 모였어요</div>
       <div class="names" style="justify-content:center">${on.map(p => `<span class="name-chip">${esc(p.name)}</span>`).join('')}</div>
       <div class="msg" id="matchWait" style="font-size:18px">${MATCH_CAP}명이 모이면 바로 시작해요</div>
+      <div class="live" id="matchStats" hidden></div>
       <div class="note" style="text-align:left">한 판은 10라운드예요. 라운드마다 한 명이 40초 동안 그리고, 나머지는 맞혀요. 기회는 ${MAX_TRIES}번!<br>먼저 맞힌 친구와 그린 친구가 같은 점수를 받아요.</div>
       <button class="btn ghost small" data-act="mleave">나가기</button>
     </div>
@@ -1264,9 +1265,19 @@ function matchKickedHTML(){
     <button class="btn blue" data-act="mrematch">다른 방 찾기</button><button class="btn ghost small" data-act="mhome">처음으로</button></div></div>`;
 }
 
+function matchStats(){
+  const now = B.now(); let play = 0, rooms = 0, wait = 0;
+  Object.values(matchLobby || {}).forEach(v => {
+    if (!v || now - (v.t || 0) >= 20000) return;
+    if (v.phase === 'waiting') wait += v.n || 0; else { play += v.n || 0; rooms++; }
+  });
+  return { play, rooms, wait };
+}
 function matchDynamic(){
   const s = S.state; if (!s || !S.match) return;
   if (s.phase === 'waiting') {
+    const ms = $('#matchStats');
+    if (ms && matchLobby) { const st = matchStats(); ms.hidden = false; ms.innerHTML = st.play ? `지금 <b>${st.play}</b>명이 방 ${st.rooms}개에서 게임 중이에요` : '지금 게임 중인 방은 없어요'; }
     const el = $('#matchWait'); if (!el) return;
     const n = matchOnline().length;
     const left = Math.ceil(((s.waitingSince || B.now()) + MATCH_WAIT - B.now()) / 1000);
