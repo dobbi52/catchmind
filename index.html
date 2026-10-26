@@ -36,6 +36,8 @@ input,textarea{font-family:var(--ko)}
 .btn.ghost{background:transparent;color:var(--text);border:3px solid var(--line2);box-shadow:none}
 .btn.blue{background:var(--blue);box-shadow:5px 5px 0 var(--blue-d)}
 .btn.blue:active:not(:disabled){box-shadow:2px 2px 0 var(--blue-d)}
+.mcount{font-size:17px;white-space:nowrap}
+.mcount b{font-family:var(--pix);font-size:13px;font-weight:normal}
 .mp{border:2px solid var(--line2);padding:8px 12px}
 .mp summary{cursor:pointer;font-size:18px;color:var(--blue)}
 .mp-list{display:flex;flex-direction:column;gap:6px;margin-top:8px}
@@ -1035,6 +1037,19 @@ function loadAuth(){
   if (window.ArcadeAuth) return Promise.resolve(true);
   return loadScript('https://dobbi52.github.io/games/arcade-auth.js').then(() => !!window.ArcadeAuth, () => false);
 }
+/* 첫 화면 랜덤 매칭 버튼: 지금 짝을 찾는(대기 중인) 사람 수 */
+let matchLobby = null;
+function updateMatchCount(){
+  const el = $('#matchCount'); if (!el || !matchLobby) return;
+  const now = B.now(); let wait = 0;
+  Object.values(matchLobby).forEach(v => { if (v && now - (v.t || 0) < 20000 && v.phase === 'waiting') wait += v.n || 0; });
+  el.innerHTML = `찾는 중 <b>${wait}</b>명`;
+}
+function watchMatchLobby(){
+  if (!B || B.mode !== 'firebase') return;
+  B.on('match/lobby', v => { matchLobby = v || {}; updateMatchCount(); });
+  setInterval(updateMatchCount, 5000);
+}
 async function startMatchFlow(){
   if (S.offline || S.noConn) { toast('지금은 서버에 연결할 수 없어요', 2200); return; }
   const ok = await loadAuth();
@@ -1833,7 +1848,7 @@ function homeHTML(){
       ${!S.offline && S.noConn ? `<div class="msg bad" style="font-size:18px">${NOCONN_MSG}</div>` : ''}
       <button class="btn" data-home="join" ${S.offline || S.noConn ? 'disabled' : ''}><span>학생 · 방 들어가기</span><span class="pix">PLAYER</span></button>
       <button class="btn pink" data-home="host" ${S.offline || S.noConn ? 'disabled' : ''}><span>선생님 · 방 만들기</span><span class="pix">HOST</span></button>
-      <button class="btn blue" data-home="match" ${S.offline || S.noConn ? 'disabled' : ''}><span>랜덤 매칭 · 전국 친구와</span><span class="pix">2P+</span></button>
+      <button class="btn blue" data-home="match" ${S.offline || S.noConn ? 'disabled' : ''}><span>랜덤 매칭 · 전국 친구와</span><span class="mcount" id="matchCount">2P+</span></button>
       <button class="btn yellow" data-home="practice"><span>혼자 연습 · 컴퓨터 친구와</span><span class="pix">1P</span></button>
     </div>
     <div class="live" data-live hidden></div>
@@ -1876,7 +1891,7 @@ function updateLive(){
     el.innerHTML = `지금 <b>${n}</b>명이 접속해 있어요`;
   });
 }
-function showHome(){ S.code = null; app.innerHTML = homeHTML(); history.replaceState(null, '', location.pathname); updateLive(); }
+function showHome(){ S.code = null; app.innerHTML = homeHTML(); history.replaceState(null, '', location.pathname); updateLive(); updateMatchCount(); }
 function showJoin(code){ S.code = null; app.innerHTML = joinHTML(code); setTimeout(() => { const el = code ? $('#jName') : $('#jCode'); if (el) el.focus(); }, 50); }
 
 document.addEventListener('click', async e => {
@@ -1936,6 +1951,7 @@ document.addEventListener('submit', async e => {
   }
   $('#modeflag').textContent = B.mode === 'local' ? 'DEMO MODE · 같은 브라우저 탭끼리만 연결' : '';
   if (B.trackPresence) B.trackPresence(n => { S.liveCount = n; updateLive(); });
+  watchMatchLobby();
   if (B.onConnChange) {
     B.onConnChange(c => { if (c) setNoConn(false); });
     setTimeout(() => { if (!B.isConnected()) setNoConn(true); }, 6000);
