@@ -399,6 +399,7 @@ function makeLocalBackend(memoryOnly){
   if (ch) ch.onmessage = e => apply(e.data, false);
   return {
     mode: memoryOnly ? 'practice' : 'local',
+    waitConnected: () => Promise.resolve(true),
     now: () => Date.now(),
     on(path, cb){ const s = { path, cb }; subs.add(s); setTimeout(() => { if (subs.has(s)) cb(clone(getAt(path))); }, 0); return () => subs.delete(s); },
     async get(path){ return clone(getAt(path)); },
@@ -418,10 +419,18 @@ async function makeFirebaseBackend(cfg){
   await loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js');
   firebase.initializeApp(cfg);
   const d = firebase.database();
-  let off = 0;
+  let off = 0, connected = false, connCb = null; const waiters = [];
   d.ref('.info/serverTimeOffset').on('value', s => { off = s.val() || 0; });
+  d.ref('.info/connected').on('value', s => {
+    connected = !!s.val();
+    if (connected) waiters.splice(0).forEach(f => f(true));
+    if (connCb) connCb(connected);
+  });
   return {
     mode: 'firebase',
+    isConnected: () => connected,
+    onConnChange(cb){ connCb = cb; },
+    waitConnected(ms){ if (connected) return Promise.resolve(true); return new Promise(res => { const t = setTimeout(() => res(false), ms); waiters.push(v => { clearTimeout(t); res(v); }); }); },
     now: () => Date.now() + off,
     on(p, cb){ const r = d.ref(p); const h = s => cb(s.val()); r.on('value', h); return () => r.off('value', h); },
     async get(p){ return (await d.ref(p).get()).val(); },
@@ -1506,8 +1515,9 @@ function homeHTML(){
     <div class="pix blink" style="text-align:center;font-size:12px;color:var(--yellow)">PRESS START</div>
     <div class="home-btns">
       ${S.offline ? '<div class="msg bad" style="font-size:18px">서버에 연결하지 못했어요. 인터넷 연결을 확인해 주세요.<br>지금은 혼자 연습만 할 수 있어요.</div>' : ''}
-      <button class="btn" data-home="join" ${S.offline ? 'disabled' : ''}><span>학생 · 방 들어가기</span><span class="pix">PLAYER</span></button>
-      <button class="btn pink" data-home="host" ${S.offline ? 'disabled' : ''}><span>선생님 · 방 만들기</span><span class="pix">HOST</span></button>
+      ${!S.offline && S.noConn ? `<div class="msg bad" style="font-size:18px">${NOCONN_MSG}</div>` : ''}
+      <button class="btn" data-home="join" ${S.offline || S.noConn ? 'disabled' : ''}><span>학생 · 방 들어가기</span><span class="pix">PLAYER</span></button>
+      <button class="btn pink" data-home="host" ${S.offline || S.noConn ? 'disabled' : ''}><span>선생님 · 방 만들기</span><span class="pix">HOST</span></button>
       <button class="btn yellow" data-home="practice"><span>혼자 연습 · 컴퓨터 친구와</span><span class="pix">1P</span></button>
       ${recent ? `<button class="btn ghost" data-home="resume"><span>만든 방 이어서 열기 (${esc(saved.code)})</span><span class="pix">CONT</span></button>` : ''}
     </div>
@@ -1539,6 +1549,10 @@ function practiceHTML(){
   </form></div>`;
 }
 const LIVE_MAX = 100;
+const NOCONN_MSG = '지금 접속한 사람이 많아서(최대 100명) 들어갈 수 없어요.<br>잠시 뒤에 다시 해 주세요. 혼자 연습은 할 수 있어요.';
+const NOCONN_TEXT = '지금 접속한 사람이 많아서(최대 100명) 들어갈 수 없어요. 잠시 뒤에 다시 해 주세요.';
+function onHomeScreen(){ return !S.code && !!document.querySelector('[data-home="practice"]'); }
+function setNoConn(v){ if (S.noConn === v) return; S.noConn = v; if (onHomeScreen()) { app.innerHTML = homeHTML(); updateLive(); } }
 function updateLive(){
   document.querySelectorAll('[data-live]').forEach(el => {
     const n = S.liveCount;
@@ -1559,8 +1573,13 @@ document.addEventListener('click', async e => {
   if (h === 'join') showJoin('');
   else if (h === 'practice') { app.innerHTML = practiceHTML(); setTimeout(() => { const el = $('#pName'); if (el) el.focus(); }, 50); }
   else if (h === 'back') showHome();
-  else if (h === 'host') { t.disabled = true; await createRoom(); hostListenSkip(); }
-  else if (h === 'resume') { let saved = null; try { saved = JSON.parse(lsGet('pcm-host') || 'null'); } catch (er) {} if (saved && await resumeHost(saved.code)) { hostListenSkip(); history.replaceState(null, '', location.pathname + '?host=' + saved.code); } else { toast('방을 찾을 수 없어요'); lsDel('pcm-host'); showHome(); } }
+  else if (h === 'host') {
+    t.disabled = true;
+    if (!await B.waitConnected(6000)) { setNoConn(true); toast('지금은 방을 만들 수 없어요', 2200); return; }
+    await createRoom(); hostListenSkip();
+  }
+  else if (h === 'resume') {
+    if (!await B.waitConnected(6000)) { setNoConn(true); toast('지금은 방을 열 수 없어요', 2200); return; } let saved = null; try { saved = JSON.parse(lsGet('pcm-host') || 'null'); } catch (er) {} if (saved && await resumeHost(saved.code)) { hostListenSkip(); history.replaceState(null, '', location.pathname + '?host=' + saved.code); } else { toast('방을 찾을 수 없어요'); lsDel('pcm-host'); showHome(); } }
 });
 
 document.addEventListener('submit', async e => {
@@ -1581,6 +1600,7 @@ document.addEventListener('submit', async e => {
   if ([...name].length < 2 || [...name].length > 8) { err.textContent = '별명은 2~8글자로 써 주세요'; return; }
   if (isBad(name)) { err.textContent = '다른 별명을 써 주세요'; return; }
   err.textContent = '들어가는 중...';
+  if (!await B.waitConnected(6000)) { err.innerHTML = NOCONN_TEXT; return; }
   const msg = await joinRoom(code, name);
   if (msg) err.textContent = msg;
 });
@@ -1595,7 +1615,16 @@ document.addEventListener('submit', async e => {
   }
   $('#modeflag').textContent = B.mode === 'local' ? 'DEMO MODE · 같은 브라우저 탭끼리만 연결' : '';
   if (B.trackPresence) B.trackPresence(n => { S.liveCount = n; updateLive(); });
+  if (B.onConnChange) {
+    B.onConnChange(c => { if (c) setNoConn(false); });
+    setTimeout(() => { if (!B.isConnected()) setNoConn(true); }, 6000);
+  }
   const q = new URLSearchParams(location.search);
+  if ((q.get('host') || q.get('room')) && !await B.waitConnected(6000)) {
+    if (q.get('room')) { showJoin(q.get('room')); const e = $('#jErr'); if (e) e.textContent = NOCONN_TEXT; }
+    else { S.noConn = true; showHome(); }
+    return;
+  }
   if (q.get('host')) { if (await resumeHost(q.get('host'))) { hostListenSkip(); return; } showHome(); return; }
   if (q.get('room')) {
     const code = q.get('room');
