@@ -617,7 +617,7 @@ function players(){ return Object.entries(S.players || {}).map(([id, p]) => ({ i
 function onlinePlayers(){ return players().filter(p => p.online !== false); }
 function nameOf(id){ return (S.players && S.players[id] && S.players[id].name) || '?'; }
 function settings(){ return (S.meta && S.meta.settings) || defaultSettings(); }
-function defaultSettings(){ return { grid: 12, turn: 20, drawers: 3, rounds: 8, hint: 'always', cats: ['동물', '과일·채소', '음식', '물건', '장소', '자연·날씨', '탈것'], custom: '', useCustom: false }; }
+function defaultSettings(){ return { grid: 12, turn: 20, drawers: 3, rounds: 10, hint: 'always', cats: ['동물', '과일·채소', '음식', '물건', '장소', '자연·날씨', '탈것'], custom: '', useCustom: false }; }
 function roomPath(sub = ''){ return 'rooms/' + S.code + (sub ? '/' + sub : ''); }
 function drawersArr(){ const d = S.state && S.state.drawers; if (!d) return []; return Array.isArray(d) ? d : Object.values(d); }
 function roundTotal(){ return (S.state && S.state.total) || 0; }
@@ -1084,7 +1084,7 @@ function hostLobbyHTML(){
         <div class="set-row"><span class="lb">격자 크기</span>${segBtns('grid', [[8, '8×8'], [12, '12×12'], [16, '16×16']])}</div>
         <div class="set-row"><span class="lb">그리는 친구</span>${segBtns('drawers', [[1, '1명'], [2, '2명'], [3, '3명']])}</div>
         <div class="set-row"><span class="lb">한 사람 시간</span>${segBtns('turn', turnOpts(st.drawers).map(v => [v, v + '초']))}</div>
-        <div class="set-row"><span class="lb">라운드</span>${segBtns('rounds', [[5, '5'], [8, '8'], [10, '10'], [15, '15']])}</div>
+        <div class="set-row"><span class="lb">라운드</span>${segBtns('rounds', [[5, '5'], [10, '10'], [20, '20'], [30, '30']])}</div>
         <div class="set-row"><span class="lb">다음 라운드</span>${segBtns('autoNext', [[0, '선생님이 누르기'], [5, '자동 5초'], [8, '자동 8초'], [10, '자동 10초']])}</div>
         <div class="set-row"><span class="lb">그림 팀 이름</span>${segBtns('anon', [[false, '보여줌'], [true, '숨김(결과에서 공개)']])}</div>
         <div class="set-row"><span class="lb">분야 힌트</span>${segBtns('hint', [['always', '처음부터'], ['half', '중간에'], ['never', '안 보여줌']])}</div>
