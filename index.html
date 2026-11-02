@@ -249,6 +249,12 @@ span.mp-k{border:none}
 .live.warn b{color:var(--yellow)}
 .live.full{border-color:var(--pink);color:var(--pink)}
 .live.full b{color:var(--pink)}
+.rm-dim{position:fixed;inset:0;background:rgba(11,15,26,.85);z-index:60;display:flex;align-items:center;justify-content:center;padding:16px}
+.rm-dim[hidden]{display:none}
+.rm-box{width:min(100%,460px);display:flex;flex-direction:column;gap:16px}
+.rm-mini{width:min(100%,260px);align-self:center}
+.board-word{font-size:30px;color:var(--yellow);font-weight:normal;letter-spacing:1px}
+.board-word.hid{color:var(--muted);letter-spacing:6px}
 .toast{position:fixed;left:50%;top:18px;transform:translateX(-50%);background:var(--yellow);color:var(--bg);padding:10px 16px;font-size:20px;z-index:50;box-shadow:4px 4px 0 var(--yellow-d)}
 /* animations */
 @keyframes enter{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
@@ -652,7 +658,7 @@ function subscribeRoom(){
 }
 
 function stateEffects(){
-  const s = S.state; if (!s) return;
+  const s = S.state; if (!s || S.role === 'remote') return;
   const rk = s.phase + ':' + s.round;
   const tk = s.round + ':' + s.drawerIdx;
   const first = S._rk === undefined;
@@ -690,6 +696,9 @@ function onState(){
     if (isHostLogic()) {
       S.processed = new Set(); S.wrongs = [];
       S.guessUnsub = B.on(roomPath('guesses/' + r), v => { S.guessesAll = v || {}; hostProcessGuesses(); });
+    }
+    if (S.role === 'remote') {
+      S.guessUnsub2 = B.on(roomPath('guesses/' + r), v => { S.guessesAll = v || {}; render(); });
     }
     if (S.role === 'player') {
       S.guessUnsub2 = B.on(roomPath('guesses/' + r), v => { S.roundGuesses = v || {}; S.myGuesses = (v && v[S.pid]) || {}; render(); updateMisses(); });
@@ -811,6 +820,7 @@ function hostProcessGuesses(){
     if (isCorrect(g.t)) { hostEndRound(g.pid, g.attempt, g.at); return; }
     S.wrongs.unshift({ pid: g.pid, t: g.t, attempt: g.attempt, at: g.at });
   }
+  const wc = $('#wrongCount'); if (wc) wc.textContent = S.wrongs.length || '';
   if (S.showWrongs) render(true);
 }
 
@@ -845,6 +855,7 @@ function hostTick(){
 }
 
 async function hostListenSkip(){
+  hostListenCmd();
   S.unsubs.push(B.on(roomPath('skip'), v => {
     const s = S.state;
     if (v && s && s.phase === 'drawing' && v.round === s.round && v.idx === s.drawerIdx) { B.remove(roomPath('skip')); hostAdvanceTurn(); }
@@ -1291,11 +1302,133 @@ function matchDynamic(){
 }
 
 /* =========================================================
+   7-3) 선생님 폰 관리 화면 (칠판에는 숨기고 선생님 폰에만 정답·오답 목록)
+   ========================================================= */
+function remoteURL(){ return location.origin + location.pathname + '?remote=' + S.code + '&t=' + ((S.meta && S.meta.remoteToken) || ''); }
+function deviceId(){ let d = lsGet('pcm-dev'); if (!d) { d = genId(); lsSet('pcm-dev', d); } return d; }
+
+/* --- 칠판 쪽: 연결 창과 명령 받기 --- */
+async function openRemoteModal(){
+  if (!S.meta.remoteToken || !S.meta.remoteDev) await B.update(roomPath('meta'), { remoteToken: genId(), remoteDev: null });
+  let m = $('#remoteModal');
+  if (!m) { m = document.createElement('div'); m.id = 'remoteModal'; m.className = 'rm-dim'; document.body.appendChild(m); }
+  m.hidden = false; S._rmShown = null; updateRemoteModal();
+}
+function closeRemoteModal(){ const m = $('#remoteModal'); if (m) m.hidden = true; }
+function updateRemoteModal(){
+  const m = $('#remoteModal'); if (!m || m.hidden || !S.meta) return;
+  const linked = !!S.meta.remoteDev;
+  const sig = linked + ':' + S.meta.remoteToken;
+  if (S._rmShown === sig) return; S._rmShown = sig;
+  m.innerHTML = `<div class="rm-box panel y" role="dialog" aria-modal="true" aria-label="선생님 폰 연결">
+    <div class="panel-h"><span class="tagpix" style="color:var(--yellow)">TEACHER PHONE</span><button class="btn ghost small" data-act="rmclose">닫기</button></div>
+    ${linked ? `<div class="msg ok" style="font-size:22px">선생님 폰이 연결됐어요!</div>
+      <div class="muted" style="font-size:17px;line-height:1.6">폰에서 정답과 오답 목록을 보고, 정답 인정·정답 공개·다음 라운드를 누를 수 있어요.</div>
+      <button class="btn ghost small" data-act="rmreset">연결 끊고 다른 폰으로</button>`
+    : `<div style="font-size:20px;line-height:1.5">선생님 폰 카메라로 찍어 주세요.<br><span class="muted" style="font-size:16px">학생들이 화면을 보지 않을 때 찍고, 연결되면 QR은 바로 사라져요. 처음 찍은 폰 한 대만 연결돼요.</span></div>
+      <div class="qr" id="rmQr" style="align-self:center"></div>`}
+  </div>`;
+  if (!linked) {
+    const el = $('#rmQr');
+    if (typeof QRCode === 'undefined') el.innerHTML = '<span style="color:#333;font-size:14px;padding:8px;word-break:break-all">' + esc(remoteURL()) + '</span>';
+    else new QRCode(el, { text: remoteURL(), width: 180, height: 180, colorDark: '#0B0F1A', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
+  } else if (!S._rmAutoClose) { S._rmAutoClose = setTimeout(() => { S._rmAutoClose = null; closeRemoteModal(); }, 2500); }
+}
+function hostListenCmd(){
+  S.unsubs.push(B.on(roomPath('cmd'), v => {
+    if (!v) return;
+    Object.entries(v).forEach(([id, c]) => {
+      B.remove(roomPath('cmd/' + id));
+      if (!c || !S.meta || c.dev !== S.meta.remoteDev) return;
+      runRemoteCmd(c);
+    });
+  }));
+}
+function runRemoteCmd(c){
+  const s = S.state; if (!s) return;
+  if (c.type === 'start' && s.phase === 'lobby' && onlinePlayers().length >= 2) startRound();
+  else if (c.type === 'accept' && s.phase === 'drawing' && s.round === c.round) {
+    const list = Object.entries((S.guessesAll || {})[c.pid] || {}).map(([gid, g]) => ({ gid, ...g })).sort((a, b) => a.at - b.at).slice(0, MAX_TRIES);
+    const k = list.findIndex(g => g.gid === c.gid);
+    if (k >= 0) hostEndRound(c.pid, k + 1, list[k].at);
+  }
+  else if (c.type === 'reveal' && s.phase === 'drawing' && s.round === c.round) hostEndRound(null);
+  else if (c.type === 'skipTurn' && s.phase === 'drawing' && s.round === c.round && s.drawerIdx === c.idx) hostAdvanceTurn();
+  else if (c.type === 'next' && s.phase === 'result' && s.round === c.round) { if (s.round >= settings().rounds) B.update(roomPath('state'), { phase: 'end', nextAt: null }); else startRound(); }
+  else if (c.type === 'pause' && s.phase === 'result') B.update(roomPath('state'), { nextAt: null });
+  else if (c.type === 'end' && s.phase !== 'end') B.update(roomPath('state'), { phase: 'end', nextAt: null });
+}
+
+/* --- 폰 쪽 --- */
+async function connectRemote(code, token){
+  const meta = await B.get('rooms/' + code + '/meta');
+  if (!meta) return '방을 찾을 수 없어요. 칠판에서 방이 닫혔을 수 있어요.';
+  if (!token || meta.remoteToken !== token) return '연결 QR이 바뀌었어요. 칠판의 "선생님 폰"을 눌러 새 QR을 찍어 주세요.';
+  const dev = deviceId();
+  const r = await B.transaction('rooms/' + code + '/meta/remoteDev', cur => (cur && cur !== dev) ? undefined : dev);
+  if (!r.committed) return '이미 다른 폰이 연결돼 있어요. 칠판의 "선생님 폰"에서 "연결 끊고 다른 폰으로"를 눌러 주세요.';
+  S.code = code; S.role = 'remote'; S.dev = dev;
+  subscribeRoom();
+  return null;
+}
+function sendCmd(type, extra){ B.push(roomPath('cmd'), { type, dev: S.dev, at: B.now(), ...(extra || {}) }); }
+
+function remoteWrongs(){
+  const s = S.state; const d = drawersArr(); const list = [];
+  Object.entries(S.guessesAll || {}).forEach(([pid, gs]) => {
+    if (d.includes(pid)) return;
+    Object.entries(gs || {}).map(([gid, g]) => ({ gid, ...g })).sort((a, b) => a.at - b.at).slice(0, MAX_TRIES)
+      .forEach((g, i) => { if (!isCorrect(g.t)) list.push({ pid, gid: g.gid, t: g.t, at: g.at, attempt: i + 1 }); });
+  });
+  return list.sort((a, b) => b.at - a.at);
+}
+function renderRemote(force){
+  const s = S.state; if (!s || !S.meta) return;
+  if (S.meta.remoteDev !== S.dev) { app.innerHTML = `<div class="center"><div class="card"><div class="msg bad">칠판에서 연결이 끊겼어요.</div><button class="btn ghost" data-act="rmquit">처음으로</button></div></div>`; S.viewKey = 'unlinked'; return; }
+  const wr = s.phase === 'drawing' ? remoteWrongs() : [];
+  const key = 'r:' + s.phase + ':' + s.round + ':' + s.drawerIdx + ':' + wr.map(w => w.gid).join(',') + ':' + !!s.nextAt + ':' + onlinePlayers().length + ':' + JSON.stringify(s.winner || null);
+  if (!force && key === S.viewKey) return;
+  S.viewKey = key;
+  const top = `<div class="p-top"><div style="display:flex;flex-direction:column;gap:6px"><span class="pix" style="font-size:10px;color:var(--yellow)">TEACHER · CODE ${esc(S.code)}</span><span style="font-size:20px">선생님 관리 화면</span></div><span class="pix" style="font-size:12px">P ${onlinePlayers().length}</span></div>`;
+  let body = '';
+  if (s.phase === 'lobby') {
+    body = `<div class="msg" style="font-size:20px">학생이 모이면 여기서도 시작할 수 있어요</div>
+      <button class="btn pink" data-rcmd="start" style="height:60px;font-size:22px" ${onlinePlayers().length < 2 ? 'disabled' : ''}>게임 시작 ▶</button>`;
+  } else if (s.phase === 'drawing') {
+    const d = drawersArr(); const cur = d[s.drawerIdx];
+    body = `<div class="secret"><div style="display:flex;flex-direction:column;gap:6px"><span class="pix" style="font-size:9px;color:var(--pink)">ANSWER · ROUND ${s.round}</span><b>${esc(s.word)}</b></div>${s.cat ? `<span class="hint-cat">${esc(s.cat)}</span>` : ''}</div>
+      ${(s.syn && s.syn.length) ? `<div class="muted" style="font-size:16px">같이 인정: ${esc((Array.isArray(s.syn) ? s.syn : Object.values(s.syn)).join(', '))}</div>` : ''}
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:18px"><span>${cur ? esc(nameOf(cur)) + ' 그리는 중' : '마지막 추측 시간'}</span><span class="p-time" id="turnTime">00:00</span></div>
+      <div class="rm-mini"><div class="grid-wrap grid-frame"><canvas data-grid="view" aria-label="학생이 그리는 그림"></canvas></div></div>
+      <div class="panel" style="padding:12px">
+        <div class="panel-h" style="margin-bottom:8px"><span style="font-size:20px;color:var(--pink)">땡! 오답 ${wr.length}</span><span class="muted" style="font-size:14px">비슷하면 정답 인정</span></div>
+        <div class="wrong-list" style="max-height:none">${wr.length ? wr.map(w => `<div class="wrong-row"><span class="w">${esc(w.t)}</span><span class="who">${esc(nameOf(w.pid))}</span><button class="btn small" data-racc="${w.pid}|${w.gid}">정답 인정</button></div>`).join('') : '<div class="muted">아직 오답이 없어요</div>'}</div>
+      </div>
+      <div class="tools">
+        ${cur ? `<button class="btn ghost" data-rcmd="skipTurn">다음 사람</button>` : ''}
+        <button class="btn ghost" data-rcmd="reveal">정답 공개</button>
+        <button class="btn ghost" data-rcmd="end">게임 끝내기</button>
+      </div>`;
+  } else if (s.phase === 'result') {
+    const w = s.winner;
+    body = `<div class="answer"><span class="pix muted" style="font-size:10px">ANSWER</span><b style="font-size:40px">${esc(s.word)}</b></div>
+      <div class="msg ${w ? 'ok' : ''}" style="font-size:22px">${w ? esc(w.name) + ' 친구가 맞혔어요 +' + w.points : '아무도 못 맞혔어요'}</div>
+      <button class="btn" data-rcmd="next" style="height:60px;font-size:22px">${s.round >= settings().rounds ? '최종 순위 보기 ▶' : '다음 라운드 ▶'}<span id="nextCount" class="pix" style="font-size:14px;margin-left:10px"></span></button>
+      ${s.nextAt ? '<button class="btn ghost small" data-rcmd="pause">잠깐 멈춤</button>' : ''}
+      <button class="btn ghost small" data-rcmd="end">게임 끝내기</button>`;
+  } else {
+    body = `<div class="msg" style="font-size:20px">게임이 끝났어요. 칠판에서 최종 순위를 확인해요.</div><div class="panel y">${rankRows(5)}</div>`;
+  }
+  app.innerHTML = `<div class="phone">${top}${body}<button class="btn ghost small" data-act="rmquit" style="margin-top:8px">연결 끊기</button></div>`;
+  requestAnimationFrame(paintCanvases);
+}
+
+/* =========================================================
    8) 화면 그리기
    ========================================================= */
 function render(force){
   if (!S.code) return;
-  if (S.role === 'host') renderHost(force); else renderPlayer(force);
+  if (S.role === 'host') renderHost(force); else if (S.role === 'remote') renderRemote(force); else renderPlayer(force);
   if (S.match) { const ml = document.querySelector('.mp-list'); if (ml) { const tmp = document.createElement('div'); tmp.innerHTML = matchPeopleHTML(); ml.innerHTML = tmp.querySelector('.mp-list').innerHTML; const sm = document.querySelector('.mp summary'); if (sm) sm.textContent = tmp.querySelector('summary').textContent; } }
   updateDynamic();
   updateLive();
@@ -1311,7 +1444,8 @@ function onTick(){
 /* ---------- 교사 화면 ---------- */
 function renderHost(force){
   const s = S.state; if (!s || !S.meta) return;
-  const key = 'h:' + s.phase + ':' + (s.round || 0) + ':' + (s.drawerIdx ?? '') + ':' + JSON.stringify({ ...settings(), custom: '' }) + ':' + JSON.stringify(players().map(p => [p.id, p.name, p.online, p.score])) + ':' + S.showWrongs + ':' + (S.showWrongs ? S.wrongs.length : 0) + ':' + !!s.nextAt;
+  const key = 'h:' + s.phase + ':' + (s.round || 0) + ':' + (s.drawerIdx ?? '') + ':' + JSON.stringify({ ...settings(), custom: '' }) + ':' + JSON.stringify(players().map(p => [p.id, p.name, p.online, p.score])) + ':' + S.showWrongs + ':' + (S.showWrongs ? S.wrongs.length : 0) + ':' + !!s.nextAt + ':' + !!S.meta.remoteDev;
+  updateRemoteModal();
   if (!force && key === S.viewKey) return;
   const screenChanged = key.split(':').slice(0, 3).join(':') !== S.viewKey.split(':').slice(0, 3).join(':');
   const turnChanged = key.split(':').slice(0, 4).join(':') !== S.viewKey.split(':').slice(0, 4).join(':');
@@ -1334,6 +1468,7 @@ function topbarHTML(rightExtra){
     <div class="chip">P ${onlinePlayers().length}</div>
     ${s.round ? `<div class="chip round">ROUND ${Math.min(s.round, st.rounds)}/${st.rounds}</div>` : ''}
     ${rightExtra || ''}
+    <button class="chip bgm ${S.meta && S.meta.remoteDev ? 'on' : ''}" data-act="remote" style="font-family:var(--ko);font-size:17px" title="선생님 폰으로 정답 보기·정답 인정">${S.meta && S.meta.remoteDev ? '폰 연결됨' : '선생님 폰'}</button>
     <button class="chip bgm ${Music.on ? 'on' : ''}" data-act="bgm" aria-pressed="${Music.on}" aria-label="배경음악 켜기 끄기" title="지금 곡: ${TRACKS[Music.track].name}">${Music.on ? 'BGM ON' : 'BGM OFF'}</button></div></div>`;
 }
 
@@ -1394,7 +1529,8 @@ function hintBarHTML(big){
   const s = S.state; const st = settings();
   const n = letterCount(s.word);
   return `<div class="hintbar">
-    <div style="display:flex;align-items:center;gap:10px"><span class="pix muted" style="font-size:10px">HINT</span><span id="hintCat" class="hint-cat off">???</span></div>
+    <div style="display:flex;align-items:center;gap:10px"><span class="pix muted" style="font-size:10px">HINT</span><span id="hintCat" class="hint-cat off">???</span>
+      ${S.role === 'host' ? `<button type="button" class="peek" id="peekBtn" aria-label="누르고 있는 동안 정답 보기">꾹 눌러 보기</button><b id="secretWord" class="hid board-word" data-word="${esc(s.word)}">???</b>` : ''}</div>
     <div style="display:flex;align-items:center;gap:8px"><span class="muted" style="font-size:${big ? 18 : 16}px">글자 수</span><div class="letters">${'<i></i>'.repeat(n)}</div></div>
   </div>`;
 }
@@ -1432,7 +1568,8 @@ function hostDrawingHTML(){
   const finalPhase = s.drawerIdx >= d.length;
   const guessers = onlinePlayers().filter(p => !d.includes(p.id)).length;
   const wrongPanel = S.showWrongs ? `<div class="panel">
-      <div class="panel-h"><span class="tagpix" style="color:var(--muted)">MISS LIST</span><span class="muted" style="font-size:16px">비슷한 답은 정답으로 인정할 수 있어요 (선생님만 보세요)</span></div>
+      <div class="panel-h"><span class="tagpix" style="color:var(--muted)">MISS LIST</span><span class="muted" style="font-size:16px">선생님만 보세요</span></div>
+      <div style="font-size:17px;color:var(--yellow);margin-bottom:8px">비슷한 답이면 [정답 인정]을 눌러 주세요. 선생님 폰을 연결하면 폰에서도 할 수 있어요.</div>
       <div class="wrong-list">${S.wrongs.length ? S.wrongs.map((w, i) => `<div class="wrong-row"><span class="w">${esc(w.t)}</span><span class="who">${esc(nameOf(w.pid))} · ${w.attempt}번째</span><button class="btn small" data-accept="${i}">정답 인정</button></div>`).join('') : '<div class="muted">아직 오답이 없어요</div>'}</div></div>` : '';
   return `<div class="board">${topbarHTML()}
   <div class="b-main">
@@ -1455,7 +1592,7 @@ function hostDrawingHTML(){
       </div>
       ${wrongPanel}
       <div class="ctrls">
-        <button class="btn ghost small" data-act="wrongs">${S.showWrongs ? '오답 숨기기' : '오답 보기'}</button>
+        <button class="btn ghost small" data-act="wrongs">${S.showWrongs ? '오답 숨기기' : '오답 보기 · 정답 인정'} <span id="wrongCount" class="pix" style="font-size:12px;color:var(--pink)">${S.wrongs.length || ''}</span></button>
         <button class="btn ghost small" data-act="skip">정답 공개</button>
         <button class="btn ghost small" data-act="end">게임 끝내기</button>
       </div>
@@ -1793,6 +1930,17 @@ document.addEventListener('click', e => {
     saveSetting('cats', cats); return;
   }
   if (t.dataset.kick) { voteKick(t.dataset.kick); return; }
+  if (t.dataset.racc) {
+    const [pid, gid] = t.dataset.racc.split('|'); const g = ((S.guessesAll || {})[pid] || {})[gid];
+    if (g && confirm(`「${g.t}」를 정답으로 인정할까요?`)) { sendCmd('accept', { round: S.state.round, pid, gid }); t.disabled = true; }
+    return;
+  }
+  if (t.dataset.rcmd) {
+    const c = t.dataset.rcmd, s = S.state;
+    if (c === 'reveal' && !confirm('정답을 공개하고 이번 라운드를 끝낼까요? (점수 없음)')) return;
+    if (c === 'end' && !confirm('게임을 끝내고 최종 순위를 볼까요?')) return;
+    sendCmd(c, { round: s.round, idx: s.drawerIdx }); t.disabled = true; return;
+  }
   if (t.dataset.color) { S.color = +t.dataset.color; S.eraser = false; document.querySelectorAll('.palette button').forEach(b => b.classList.toggle('on', b === t)); const er = document.querySelector('[data-act="eraser"]'); if (er) er.classList.remove('on'); return; }
   if (t.dataset.accept != null) { const w = S.wrongs[+t.dataset.accept]; if (w && confirm(`「${w.t}」를 정답으로 인정할까요?`)) hostEndRound(w.pid, w.attempt, w.at); return; }
   const act = t.dataset.act; if (!act) return;
@@ -1802,6 +1950,10 @@ document.addEventListener('click', e => {
   else if (act === 'newgame') { if (confirm('점수를 0으로 되돌리고 새 게임을 시작할까요?')) hostNewGame(); }
   else if (act === 'wrongs') { S.showWrongs = !S.showWrongs; render(true); }
   else if (act === 'gohome') { goHome(); }
+  else if (act === 'remote') { openRemoteModal(); }
+  else if (act === 'rmclose') { closeRemoteModal(); }
+  else if (act === 'rmreset') { S._rmShown = null; B.update(roomPath('meta'), { remoteToken: genId(), remoteDev: null }); }
+  else if (act === 'rmquit') { (S.role === 'remote' && S.meta && S.meta.remoteDev === S.dev ? B.set(roomPath('meta/remoteDev'), null) : Promise.resolve()).then(() => { lsDel('pcm-remote'); location.href = location.pathname; }); }
   else if (act === 'mleave' || act === 'mhome') { t.disabled = true; (S.match ? leaveMatch() : Promise.resolve()).then(() => { location.href = location.pathname; }); }
   else if (act === 'mrematch') { t.disabled = true; (S.match ? leaveMatch() : Promise.resolve()).then(findMatch); }
   else if (act === 'pause') { B.update(roomPath('state'), { nextAt: null }); }
@@ -1971,6 +2123,11 @@ document.addEventListener('submit', async e => {
   if ((q.get('host') || q.get('room')) && !await B.waitConnected(6000)) {
     if (q.get('room')) { showJoin(q.get('room')); const e = $('#jErr'); if (e) e.textContent = NOCONN_TEXT; }
     else { S.noConn = true; showHome(); }
+    return;
+  }
+  if (q.get('remote')) {
+    const msg = await connectRemote(q.get('remote'), q.get('t'));
+    if (msg) { showHome(); toast(msg, 4000); history.replaceState(null, '', location.pathname); }
     return;
   }
   if (q.get('host')) { if (await resumeHost(q.get('host'))) { hostListenSkip(); return; } showHome(); return; }
